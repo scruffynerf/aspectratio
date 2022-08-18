@@ -88,9 +88,11 @@ def catchup():
     filterlimits = {}
     filterlimits["per_page"] = -1
     found = stash.find_scenes(filter, filterlimits)
-    for scene in found:
+    total = len(found)
+    for count, scene in enumerate(found):
        result = checkratio(scene)
        log.debug(f"{scene['title']}: {result}")
+       log.progress((1+count)/total)
 
 def checkratio(scene):
     existing_tags = get_names(scene["tags"])
