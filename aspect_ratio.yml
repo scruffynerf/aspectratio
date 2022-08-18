@@ -1,0 +1,18 @@
+name: Aspect Ratio tagger
+description: Adds Ratio tags on Scene Create
+version: 0.1
+url: https://github.com/scruffynerf/AspectRatio
+exec:
+  - python3
+  - "{pluginDir}/aspect_ratio.py"
+interface: raw
+hooks:
+  - name: Add Aspect Ratio to Scene
+    description: Adds Aspect Ratio tag to newly added scenes
+    triggeredBy:
+      - Scene.Create.Post
+tasks:
+  - name: 'Tag Older Scenes with Aspect Ratio'
+    description: Tag Aspect Ratio in old scenes (pre-existing before plugin installation)
+    defaultArgs:
+      mode: catchup
