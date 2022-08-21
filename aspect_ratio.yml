@@ -12,7 +12,7 @@ hooks:
     triggeredBy:
       - Scene.Create.Post
 tasks:
-  - name: 'Tag Older Scenes with Aspect Ratio'
-    description: Tag Aspect Ratio in old scenes (pre-existing before plugin installation)
+  - name: 'Tag Untagged Scenes with Aspect Ratio'
+    description: Tag Aspect Ratio in any scenes without a tag.
     defaultArgs:
       mode: catchup
