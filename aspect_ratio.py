@@ -4,12 +4,11 @@ import json
 
 try:
     import stashapi.log as log
-    import stashapi.marker_parse as mp
-    from stashapi.tools import human_bytes
-    from stashapi.stash_types import PhashDistance
+    from stashapi.stash_types import PhashDistance  # kept for consistency
     from stashapi.stashapp import StashInterface
 except ModuleNotFoundError:
-    print("You need to install the stashapp-tools (stashapi) python module. (CLI: pip install stashapp-tools)", file=sys.stderr)
+    print("You need to install the stashapp-tools (stashapi) python module. (Either from community plugins or by runninng `pip install stashapp-tools` in a CLI)", file=sys.stderr)
+    sys.exit(1)
 
 # plugins don't start in the right directory, let's switch to the local directory
 os.chdir(os.path.dirname(os.path.realpath(__file__)))
@@ -24,6 +23,16 @@ if not os.path.exists("config.py"):
                 firstrun.write(f"#{line}")
 
 import config
+
+SCENE_FRAGMENT = """
+id
+title
+tags { name }
+files {
+  width
+  height
+}
+"""
 
 def configfile_edit(configfile, name: str, state: str):
     found = 0
@@ -51,75 +60,72 @@ def exit_plugin(msg=None, err=None):
     print(json.dumps(output_json))
     sys.exit()
 
-def get_ids(obj):
-    ids = []
-    for item in obj:
-        ids.append(item['id'])
-    return ids
-
 def get_names(obj):
     names = []
-    for item in obj:
+    for item in obj or []:
         names.append(item['name'])
     return names
 
 def parent_tag(tag_id):
     parenttagname = config.ratio_parent_name
     parent_tag_id = stash.find_tag(parenttagname, create=True).get("id")
-    tag_update = {}
-    tag_update["id"] = tag_id
-    tag_update["parent_ids"] = parent_tag_id
+    tag_update = {"id": tag_id, "parent_ids": [parent_tag_id]}
     stash.update_tag(tag_update)
-    return
 
 def catchup():
-    ratio_names = config.ratiorange.keys()
+    ratio_names = list(config.ratiorange.keys())
     parenttagname = config.ratio_parent_name
     parent_tag_id = stash.find_tag(parenttagname, create=True).get("id")
+    
     for tagname in ratio_names:
         tag_id = stash.find_tag(tagname, create=True).get("id")
         parent_tag(tag_id)
-    filtertags = {}
-    filtertags["value"] = parent_tag_id
-    filtertags["depth"] = -1
-    filtertags["modifier"] = "EXCLUDES"
-    filter = {}
-    filter["tags"] = filtertags
-    filterlimits = {}
-    filterlimits["per_page"] = -1
-    found = stash.find_scenes(filter, filterlimits)
+    
+    filtertags = {"value": parent_tag_id, "depth": -1, "modifier": "EXCLUDES"}
+    filter = {"tags": filtertags}
+    filterlimits = {"per_page": -1}
+    
+    found = stash.find_scenes(filter, filterlimits, fragment=SCENE_FRAGMENT)
     total = len(found)
+    
     for count, scene in enumerate(found):
-       result = checkratio(scene)
-       log.debug(f"{scene['title']}: {result}")
-       log.progress((1+count)/total)
+        result = checkratio(scene)
+        log.debug(f"{scene.get('title', 'Untitled')}: {result}")
+        log.progress((1 + count) / total)
 
 def checkratio(scene):
-    existing_tags = get_names(scene["tags"])
-    height = scene["file"]["height"]
-    width = scene["file"]["width"]
-    ratio = round(width/height,2)
-    for tagname, range in config.ratiorange.items() :
-        if ratio >= range[0] and ratio <=range[1] :
-           if tagname not in existing_tags:
-              tag_ratio = stash.find_tag(tagname, create=True).get("id")
-              parent_tag(tag_ratio)
-              stash.update_scenes({
-                'ids': [scene['id']],
-                'tag_ids': {
-                    'mode': 'ADD',
-                    'ids': [tag_ratio]
-                }
-              })
-              return(f"{tagname} matched and set")
-           return(f"{tagname} matched but already set")
-    return(f"Aspect Ratio - no ratio matched this ratio: {ratio}")
+    existing_tags = get_names(scene.get("tags"))
+    
+    files = scene.get("files") or []
+    file_data = files[0] if files else scene.get("file") or {}
+    
+    height = file_data.get("height")
+    width = file_data.get("width")
+    
+    if height is None or width is None:
+        return f"Aspect Ratio - missing dimensions for scene {scene.get('id')}"
+    
+    ratio = round(width / height, 2)
+    
+    for tagname, range_vals in config.ratiorange.items():
+        if range_vals[0] <= ratio <= range_vals[1]:
+            if tagname not in existing_tags:
+                tag_ratio = stash.find_tag(tagname, create=True).get("id")
+                parent_tag(tag_ratio)
+                stash.update_scenes({
+                    'ids': [scene['id']],
+                    'tag_ids': {'mode': 'ADD', 'ids': [tag_ratio]}
+                })
+                return f"{tagname} matched and set"
+            return f"{tagname} matched but already set"
+    return f"Aspect Ratio - no ratio matched: {ratio}"
 
 def main():
     global stash
     json_input = json.loads(sys.stdin.read())
     FRAGMENT_SERVER = json_input["server_connection"]
     stash = StashInterface(FRAGMENT_SERVER)
+    
     PLUGIN_ARGS = False
     HOOKCONTEXT = False
 
@@ -132,7 +138,7 @@ def main():
         log.debug("--Starting Plugin 'Aspect Ratio'--")
         if "catchup" in PLUGIN_ARGS:
             log.info("Catching up with Aspect Ratio tagging on older files")
-            catchup() #loops thru all scenes, and tag
+            catchup()
         exit_plugin("Aspect Ratio plugin finished")
 
     try:
@@ -143,7 +149,7 @@ def main():
     log.debug("--Starting Hook 'Aspect Ratio'--")
 
     sceneID = HOOKCONTEXT['id']
-    scene = stash.find_scene(sceneID)
+    scene = stash.find_scene(sceneID, fragment=SCENE_FRAGMENT)
 
     results = checkratio(scene)
     exit_plugin(results)

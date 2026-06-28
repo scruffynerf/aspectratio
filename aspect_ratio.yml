@@ -1,6 +1,6 @@
 name: Aspect Ratio tagger
 description: Adds Ratio tags on Scene Create
-version: 0.1
+version: 0.2.0
 url: https://github.com/scruffynerf/AspectRatio
 exec:
   - python
